@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GGnet Tech Institute | CodeEdu</title>
-<script src="https://cdn.tailwindcss.com">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    function toggleSchoolField() {} 
+    function showToast(msg) { alert(msg); } 
+
     function showLiveClassModal() {
         const data = JSON.parse(localStorage.getItem('ggnet_data')) || {};
         const activeClass = localStorage.getItem('ggnet_live_status') === 'live';
@@ -27,6 +31,7 @@
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Class Link (Zoom/Google Meet)</label>
                         <input type="url" id="liveClassLink" required placeholder="https://meet.google.com/..." class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
                     </div>
+
                     ${activeClass ? `
                     <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
                         <div class="flex items-center justify-between">
@@ -47,27 +52,45 @@
                     <button type="submit" class="w-full bg-gradient-to-r from-red-500 to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
                         <i class="fas fa-broadcast-tower mr-2"></i>${activeClass ? 'Start New Class' : 'Go Live'}
                     </button>
+
                 </div>
             </div>
         `);
     }
 
     function saveLiveClass(e) {
-        e.preventDefault();
-        const data = JSON.parse(localStorage.getItem('ggnet_data'));
-        data.liveClass = {
-            active: true,
-            startedAt: new Date().toISOString(),
-            topic: document.getElementById('liveClassTopic').value,
-            instructor: document.getElementById('liveClassInstructor').value,
-            link: document.getElementById('liveClassLink').value,
-            time: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        closeModal();
-        showToast('Live class scheduled!');
-        navigateTo('documents');
+    e.preventDefault();
+    const topic = document.getElementById('liveClassTopic').value.trim();
+    const instructor = document.getElementById('liveClassInstructor').value.trim();
+    const link = document.getElementById('liveClassLink').value.trim();
+    const duration = parseInt(document.getElementById('liveClassDuration')?.value) || 60;
+    
+    if (!topic || !instructor || !link) {
+        alert('Please fill all fields');
+        return;
     }
+
+    // Single source of truth
+    localStorage.setItem('ggnet_live_status', 'live');
+    localStorage.setItem('ggnet_live_topic', topic);
+    localStorage.setItem('ggnet_live_instructor', instructor);
+    localStorage.setItem('ggnet_live_link', link);
+    localStorage.setItem('ggnet_live_started_at', Date.now());
+    localStorage.setItem('ggnet_live_ends_at', Date.now() + (duration * 60 * 1000));
+    
+    // Keep ggnet_data.liveClass for compatibility but sync it
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    data.liveClass = {
+        active: true,
+        topic, instructor, link, duration,
+        startedAt: new Date().toISOString()
+    };
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    closeModal();
+    showToast('Live class started! Students can now join.');
+    navigateTo(currentView); // Re-render, no reload
+}
 
     function showStudentUploadModal() {
         showModal(`
@@ -117,23 +140,6 @@
         };
         reader.readAsDataURL(file);
     }
-
-    function runCode() {
-        const code = document.getElementById('codeEditor').value;
-        const output = document.getElementById('codeOutput');
-        try {
-            // Basic JS execution in iframe sandbox
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            const result = iframe.contentWindow.eval(code);
-            output.textContent = result !== undefined ? String(result) : 'Code executed successfully';
-            document.body.removeChild(iframe);
-        } catch (err) {
-            output.textContent = 'Error: ' + err.message;
-        }
-    }
-
 
     const codeTemplates = {
         html: '<!DOCTYPE html>\n<html>\n<head>\n  <title>My Page</title>\n  <style>\n    body { font-family: Arial; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Hello World</h1>\n  <p>Start coding!</p>\n</body>\n</html>',
@@ -194,95 +200,7 @@
         }
     });
 
-    // ===== BULLETPROOF LIVE CLASS SYSTEM =====
-    window.forceEndLiveClass = function() {
-        console.log('[FORCE END] Triggered');
-        localStorage.setItem('ggnet_live_status', 'ended');
-        localStorage.setItem('ggnet_live_ended_at', Date.now());
-        localStorage.setItem('ggnet_live_ended_by', 'force_button');
-        localStorage.setItem('ggnet_live_ended_reason', 'manual_force');
-        
-        // Clear old data structure too
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        if (data.liveClass) {
-            data.liveClass.active = false;
-            data.liveClass.endedAt = new Date().toISOString();
-        }
-        data.lastNotification = {
-            type: 'class_ended',
-            message: 'The instructor force-ended the live class',
-            timestamp: Date.now()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        alert('Live class force-ended. Page will reload.');
-        location.reload();
-    }
-    
-    // Override stopLiveClass to use force end logic
-    window.stopLiveClass = window.forceEndLiveClass;
-    
-    // Update saveLiveClass to use simple flags
-    function saveLiveClass(e) {
-        e.preventDefault();
-        const topic = document.getElementById('liveClassTopic').value;
-        const instructor = document.getElementById('liveClassInstructor').value;
-        const link = document.getElementById('liveClassLink').value;
-        const duration = parseInt(document.getElementById('liveClassDuration')?.value) || 60;
-        
-        localStorage.setItem('ggnet_live_status', 'live');
-        localStorage.setItem('ggnet_live_topic', topic);
-        localStorage.setItem('ggnet_live_instructor', instructor);
-        localStorage.setItem('ggnet_live_link', link);
-        localStorage.setItem('ggnet_live_started_at', Date.now());
-        localStorage.setItem('ggnet_live_ends_at', Date.now() + (duration * 60 * 1000));
-        
-        // Old structure for compatibility
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        data.liveClass = {
-            active: true,
-            topic: topic,
-            instructor: instructor,
-            link: link,
-            duration: duration,
-            startedAt: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        closeModal();
-        alert('Live class started for ' + duration + ' minutes!');
-        location.reload();
-    }
-    
-    // Check live status on every render
-    function getLiveClassStatus() {
-        return localStorage.getItem('ggnet_live_status') === 'live';
-    }
-    
-    // Auto-end checker
-    setInterval(function() {
-        const status = localStorage.getItem('ggnet_live_status');
-        const endsAt = parseInt(localStorage.getItem('ggnet_live_ends_at'));
-        if (status === 'live' && endsAt && Date.now() >= endsAt) {
-            forceEndLiveClass();
-        }
-    }, 5000);
-    
-    // Student popup checker
-    setInterval(function() {
-        const status = localStorage.getItem('ggnet_live_status');
-        const lastEnded = localStorage.getItem('ggnet_live_ended_at');
-        const lastShown = sessionStorage.getItem('ended_popup_shown');
-        
-        if (status === 'ended' && lastEnded && lastEnded !== lastShown) {
-            sessionStorage.setItem('ended_popup_shown', lastEnded);
-            if (typeof currentUser !== 'undefined' && currentUser.role === 'student') {
-                alert('Class Has Ended: The instructor has ended the live class session.');
-                location.reload();
-            }
-        }
-    }, 1000);
-
+   
 
     // Notification System
     function toggleNotifications() {
@@ -343,74 +261,41 @@
 
     
     function sendNotification(event) {
-        console.log('sendNotification called');
-        try {
-            if(event) { 
-                event.preventDefault(); 
-                event.stopPropagation(); 
-            }
-            
-            // Check if user is logged in
-            if (typeof currentUser === 'undefined' || !currentUser) {
-                console.error('currentUser is undefined');
-                showToast('Error: Please log in again', 'error');
-                return false;
-            }
-            
-            const titleEl = document.getElementById('notifTitle');
-            const messageEl = document.getElementById('notifMessage');
-            
-            if (!titleEl || !messageEl) {
-                console.error('Notification fields not found');
-                showToast('Error: Form fields missing', 'error');
-                return false;
-            }
-            
-            const title = titleEl.value.trim();
-            const message = messageEl.value.trim();
-            
-            if (!title || !message) {
-                showToast('Please fill in both Title and Message', 'error');
-                return false;
-            }
-            
-            // Get or initialize data
-            let data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-            if (!data.notifications) data.notifications = [];
-            
-            const newNotif = {
-                id: Date.now(),
-                title: title,
-                message: message,
-                timestamp: new Date().toISOString(),
-                sender: currentUser.full_name || currentUser.username || 'Admin',
-                readBy: []
-            };
-            
-            data.notifications.unshift(newNotif);
-            localStorage.setItem('ggnet_data', JSON.stringify(data));
-            console.log('Notification saved:', newNotif);
-            
-            // Clear fields
-            titleEl.value = '';
-            messageEl.value = '';
-            
-            // Show success
-            showToast('Notification sent to all users!', 'success');
-            
-            // Update all tabs
-            window.dispatchEvent(new Event('ggnet_notification_sent'));
-            if (typeof loadNotifications === 'function') {
-                loadNotifications();
-            }
-            
-            return false;
-        } catch (error) {
-            console.error('Notification error:', error);
-            showToast('Failed to send: ' + error.message, 'error');
-            return false;
-        }
+    if(event) { 
+        event.preventDefault(); 
+        event.stopPropagation(); 
     }
+    
+    const title = document.getElementById('notifTitle').value.trim();
+    const message = document.getElementById('notifMessage').value.trim();
+    
+    if (!title || !message) {
+        alert('Please fill in both Title and Message');
+        return false;
+    }
+    
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    if (!data.notifications) data.notifications = [];
+    
+    const newNotif = {
+        id: Date.now(),
+        title: title,
+        message: message,
+        timestamp: new Date().toISOString(),
+        sender: currentUser.full_name || 'Admin',
+        readBy: []
+    };
+    
+    data.notifications.unshift(newNotif);
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    document.getElementById('notifTitle').value = '';
+    document.getElementById('notifMessage').value = '';
+    
+    showToast('Notification sent to all users!', 'success');
+    loadNotifications(); // Update bell immediately
+    return false;
+}
     
     // Make sure showToast exists
     if (typeof showToast === 'undefined') {
@@ -427,288 +312,24 @@
     
     // Load count on page load
     document.addEventListener('DOMContentLoaded', loadNotifications);
+    
+    // Live class sync fix
+window.addEventListener('storage', () => {
+    if (currentUser && currentUser.role === 'student' && currentView === 'dashboard') {
+        navigateTo('dashboard'); // Force re-render
+    }
+});
 
+// Update renderStudentView 'dashboard' case
+// Find this line in renderStudentView: const liveClass = data.liveClass;
+// Replace with:
+const liveClass = data.liveClass;
+const liveStatus = localStorage.getItem('ggnet_live_status');
+const isLiveActive = liveStatus === 'live' || (liveClass && liveClass.active);
+
+// Then in the HTML where you show the Join button, use isLiveActive instead of just liveClass
 </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js">
-    function showLiveClassModal() {
-        const data = JSON.parse(localStorage.getItem('ggnet_data')) || {};
-        const activeClass = localStorage.getItem('ggnet_live_status') === 'live';
-        showModal(`
-            <div class="p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-2xl font-bold text-gray-800">Schedule Live Class</h3>
-                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <form onsubmit="saveLiveClass(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Class Topic</label>
-                        <input type="text" id="liveClassTopic" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Instructor's Name</label>
-                        <input type="text" id="liveClassInstructor" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Class Link (Zoom/Google Meet)</label>
-                        <input type="url" id="liveClassLink" required placeholder="https://meet.google.com/..." class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    ${activeClass ? `
-                    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="font-semibold text-green-800">Class is Live</p>
-                                <p class="text-sm text-green-600">Topic: ${data.liveClass.topic}</p>
-                            </div>
-                            <span class="flex h-3 w-3">
-                                <span class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-red-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                            </span>
-                        </div>
-                    </div>
-                    <button type="button" onclick="stopLiveClass()" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition mb-3">
-                        <i class="fas fa-stop-circle mr-2"></i>Stop Live Class
-                    </button>
-                    ` : ''}
-                    <button type="submit" class="w-full bg-gradient-to-r from-red-500 to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
-                        <i class="fas fa-broadcast-tower mr-2"></i>${activeClass ? 'Start New Class' : 'Go Live'}
-                    </button>
-                </div>
-            </div>
-        `);
-    }
-
-    function saveLiveClass(e) {
-        e.preventDefault();
-        const data = JSON.parse(localStorage.getItem('ggnet_data'));
-        data.liveClass = {
-            active: true,
-            startedAt: new Date().toISOString(),
-            topic: document.getElementById('liveClassTopic').value,
-            instructor: document.getElementById('liveClassInstructor').value,
-            link: document.getElementById('liveClassLink').value,
-            time: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        closeModal();
-        showToast('Live class scheduled!');
-        navigateTo('documents');
-    }
-
-    function showStudentUploadModal() {
-        showModal(`
-            <div class="p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-2xl font-bold text-gray-800">Upload Assignment</h3>
-                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <form onsubmit="saveStudentUpload(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">File Name</label>
-                        <input type="text" id="studentFileName" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Upload File</label>
-                        <input type="file" id="studentFileInput" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200">
-                    </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
-                        <i class="fas fa-upload mr-2"></i>Submit
-                    </button>
-                </div>
-            </div>
-        `);
-    }
-
-    function saveStudentUpload(e) {
-        e.preventDefault();
-        const data = JSON.parse(localStorage.getItem('ggnet_data'));
-        const fileInput = document.getElementById('studentFileInput');
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const uploadData = {
-                id: Date.now(),
-                name: document.getElementById('studentFileName').value,
-                student_id: currentUser.student_id,
-                student_name: currentUser.name,
-                data: event.target.result,
-                upload_date: new Date().toISOString().split('T')[0]
-            };
-            if (!data.studentUploads) data.studentUploads = [];
-            data.studentUploads.push(uploadData);
-            localStorage.setItem('ggnet_data', JSON.stringify(data));
-            closeModal();
-            showToast('Assignment uploaded successfully!');
-            navigateTo('resources');
-        };
-        reader.readAsDataURL(file);
-    }
-
-    function runCode() {
-        const code = document.getElementById('codeEditor').value;
-        const output = document.getElementById('codeOutput');
-        try {
-            // Basic JS execution in iframe sandbox
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            const result = iframe.contentWindow.eval(code);
-            output.textContent = result !== undefined ? String(result) : 'Code executed successfully';
-            document.body.removeChild(iframe);
-        } catch (err) {
-            output.textContent = 'Error: ' + err.message;
-        }
-    }
-
-
-    const codeTemplates = {
-        html: '<!DOCTYPE html>\n<html>\n<head>\n  <title>My Page</title>\n  <style>\n    body { font-family: Arial; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Hello World</h1>\n  <p>Start coding!</p>\n</body>\n</html>',
-        css: 'body {\n  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  color: white;\n  font-family: Arial, sans-serif;\n  padding: 40px;\n}\n\nh1 {\n  font-size: 3em;\n}',
-        javascript: 'console.log("Hello from JavaScript!");\n\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet("Student"));',
-        python: 'print("Hello from Python!")\n\ndef greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("Student"))',
-        java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java!");\n        System.out.println(greet("Student"));\n    }\n    \n    static String greet(String name) {\n        return "Hello, " + name + "!";\n    }\n}',
-        csharp: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C#!");\n        Console.WriteLine(Greet("Student"));\n    }\n    \n    static string Greet(string name) {\n        return $"Hello, {name}!";\n    }\n}',
-        dotnet: 'using System;\n\nnamespace MyApp {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from .NET!");\n        }\n    }\n}'
-    };
-
-    function switchLanguage() {
-        const lang = document.getElementById('codeLanguage').value;
-        document.getElementById('codeEditor').value = codeTemplates[lang] || '';
-        document.getElementById('textOutput').textContent = '';
-        document.getElementById('previewFrame').style.display = 'none';
-    }
-
-    function runCode() {
-        const lang = document.getElementById('codeLanguage').value;
-        const code = document.getElementById('codeEditor').value;
-        const textOutput = document.getElementById('textOutput');
-        const previewFrame = document.getElementById('previewFrame');
-        
-        if (lang === 'html' || lang === 'css') {
-            previewFrame.style.display = 'block';
-            textOutput.textContent = '';
-            const iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
-            if (lang === 'html') {
-                iframeDoc.open();
-                iframeDoc.write(code);
-                iframeDoc.close();
-            } else {
-                iframeDoc.open();
-                iframeDoc.write('<style>' + code + '</style><div style="padding:20px;"><h1>CSS Preview</h1><p>Your styles are applied here</p></div>');
-                iframeDoc.close();
-            }
-        } else {
-            previewFrame.style.display = 'none';
-            textOutput.textContent = 'Language: ' + lang.toUpperCase() + '\n\n' + code + '\n\n--- Simulated Output ---\nHello from ' + lang + '!\nNote: Full compilation requires backend. This is a preview.';
-        }
-    }
-
-    function clearCode() {
-        document.getElementById('codeEditor').value = '';
-        document.getElementById('textOutput').textContent = '';
-        document.getElementById('previewFrame').style.display = 'none';
-    }
-
-
-    // Auto-sync live class status across tabs/dashboards
-    window.addEventListener('storage', (e) => {
-        if (e.key === 'ggnet_data') {
-            if (typeof loadDashboard === 'function') loadDashboard();
-            if (typeof renderSuperAdminDashboard === 'function') renderSuperAdminDashboard();
-            if (typeof renderStudentView === 'function') renderStudentView();
-            if (typeof renderStudentView === 'function') renderStudentView();
-        }
-    });
-
-    // ===== BULLETPROOF LIVE CLASS SYSTEM =====
-    window.forceEndLiveClass = function() {
-        console.log('[FORCE END] Triggered');
-        localStorage.setItem('ggnet_live_status', 'ended');
-        localStorage.setItem('ggnet_live_ended_at', Date.now());
-        localStorage.setItem('ggnet_live_ended_by', 'force_button');
-        localStorage.setItem('ggnet_live_ended_reason', 'manual_force');
-        
-        // Clear old data structure too
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        if (data.liveClass) {
-            data.liveClass.active = false;
-            data.liveClass.endedAt = new Date().toISOString();
-        }
-        data.lastNotification = {
-            type: 'class_ended',
-            message: 'The instructor force-ended the live class',
-            timestamp: Date.now()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        alert('Live class force-ended. Page will reload.');
-        location.reload();
-    }
-    
-    // Override stopLiveClass to use force end logic
-    window.stopLiveClass = window.forceEndLiveClass;
-    
-    // Update saveLiveClass to use simple flags
-    function saveLiveClass(e) {
-        e.preventDefault();
-        const topic = document.getElementById('liveClassTopic').value;
-        const instructor = document.getElementById('liveClassInstructor').value;
-        const link = document.getElementById('liveClassLink').value;
-        const duration = parseInt(document.getElementById('liveClassDuration')?.value) || 60;
-        
-        localStorage.setItem('ggnet_live_status', 'live');
-        localStorage.setItem('ggnet_live_topic', topic);
-        localStorage.setItem('ggnet_live_instructor', instructor);
-        localStorage.setItem('ggnet_live_link', link);
-        localStorage.setItem('ggnet_live_started_at', Date.now());
-        localStorage.setItem('ggnet_live_ends_at', Date.now() + (duration * 60 * 1000));
-        
-        // Old structure for compatibility
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        data.liveClass = {
-            active: true,
-            topic: topic,
-            instructor: instructor,
-            link: link,
-            duration: duration,
-            startedAt: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        closeModal();
-        alert('Live class started for ' + duration + ' minutes!');
-        location.reload();
-    }
-    
-    // Check live status on every render
-    function getLiveClassStatus() {
-        return localStorage.getItem('ggnet_live_status') === 'live';
-    }
-    
-    // Auto-end checker
-    setInterval(function() {
-        const status = localStorage.getItem('ggnet_live_status');
-        const endsAt = parseInt(localStorage.getItem('ggnet_live_ends_at'));
-        if (status === 'live' && endsAt && Date.now() >= endsAt) {
-            forceEndLiveClass();
-        }
-    }, 5000);
-    
-    // Student popup checker
-    setInterval(function() {
-        const status = localStorage.getItem('ggnet_live_status');
-        const lastEnded = localStorage.getItem('ggnet_live_ended_at');
-        const lastShown = sessionStorage.getItem('ended_popup_shown');
-        
-        if (status === 'ended' && lastEnded && lastEnded !== lastShown) {
-            sessionStorage.setItem('ended_popup_shown', lastEnded);
-            if (typeof currentUser !== 'undefined' && currentUser.role === 'student') {
-                alert('Class Has Ended: The instructor has ended the live class session.');
-                location.reload();
-            }
-        }
-    }, 1000);
-
-</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
@@ -802,7 +423,7 @@
         <div class="gradient-bg p-8 text-center">
             <img id="loginLogo" src="" alt="GGnet Logo" class="w-24 h-24 mx-auto rounded-full bg-white p-2 mb-4 shadow-lg">
             <h1 class="text-3xl font-bold text-white mb-2">GGnet Tech Institute</h1>
-            <p class="text-purple-100 text-sm">GOD'S GLORY NETWORK</p>
+            <p class="text-purple-100 text-sm">CodeEdu</p>
         </div>
         
         <div class="p-8">
@@ -972,6 +593,20 @@
     let currentUser = null;
     let currentView = 'dashboard';
     let chartInstances = {};
+
+    // Live class auto-sync for student dashboard
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'ggnet_live_status' || e.key === 'ggnet_data') {
+            // If student is on dashboard, re-render to show/hide Join button
+            if (currentUser && currentUser.role === 'student' && currentView === 'dashboard') {
+                navigateTo('dashboard');
+            }
+            // If superadmin is on documents tab, update the Stop button visibility
+            if (currentUser && currentUser.role === 'superadmin' && currentView === 'documents') {
+                navigateTo('documents');
+            }
+        }
+    });
 
     // Set logos
     document.addEventListener('DOMContentLoaded', () => {
@@ -1448,8 +1083,6 @@
                                 <i class="fas fa-power-off mr-2"></i>Force End Class
                             </button>
                             <button onclick="stopLiveClass()" id="stopLiveClassBtn" class="bg-gradient-to-r from-red-500 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all hidden">
-                                <i class="fas fa-stop-circle mr-2"></i>Stop Live Class
-                            </button>
                         </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1468,9 +1101,11 @@
                                     <p class="text-xs text-gray-500">${doc.upload_date}</p>
                                     <span class="inline-block mt-3 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">${doc.type.toUpperCase()}</span>
                                 </div>
+                                
                             `;
                         }).join('')}
                     </div>
+                    
                         <div class="mt-10">
                             <h3 class="text-2xl font-bold text-gray-800 mb-4"><i class="fas fa-history mr-2"></i>Live Class History</h3>
                             <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -1653,59 +1288,55 @@
                 `;
                 break;
                 
-            case 'resources':
-                const documents = data.documents.filter(d => !d.student_id || d.student_id === currentUser.student_id);
-                const liveClass = data.liveClass;
-                const isLiveActive = localStorage.getItem('ggnet_live_status') === 'live';
-                html = `
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-3xl font-bold text-gray-800">Learning Resources</h2>
-                        <div class="flex gap-3">
-                            ${isLiveActive ? `
-                            <button onclick="showLiveClassInfoModal()" class="bg-gradient-to-r from-red-500 to-orange-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition animate-pulse">
-                                <i class="fas fa-video mr-2"></i>Join Live Class
-                                <span class="ml-2 inline-flex h-2 w-2 rounded-full bg-white"></span>
-                            </button>
-                            ` : ''}
-                            <button onclick="showStudentUploadModal()" class="bg-gradient-to-r from-green-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition">
-                                <i class="fas fa-upload mr-2"></i>Upload Assignment
-                            </button>
-                        </div>
+                case 'resources':
+    const documents = data.documents.filter(d => !d.student_id || d.student_id === currentUser.student_id);
+    const liveStatus = localStorage.getItem('ggnet_live_status');
+    const isLiveActive = liveStatus === 'live';
+    const liveTopic = localStorage.getItem('ggnet_live_topic');
+    const liveInstructor = localStorage.getItem('ggnet_live_instructor');
+    const liveLink = localStorage.getItem('ggnet_live_link');
+    
+    html = `
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-bold text-gray-800">Learning Resources</h2>
+            <button onclick="showStudentUploadModal()" class="bg-gradient-to-r from-green-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition">
+                <i class="fas fa-upload mr-2"></i>Upload Assignment
+            </button>
+        </div>
+
+        ${isLiveActive ? `
+        <div class="bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl shadow-lg p-6 mb-6 text-white animate-pulse">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-circle text-red-300"></i>
+                        <span class="font-bold text-lg">LIVE CLASS NOW</span>
                     </div>
-                        
-                    </div>
-                    ${liveClass ? `
-                    <div class="bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl shadow-lg p-6 mb-6 text-white">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="flex items-center gap-2 mb-2">
-                                    <i class="fas fa-circle text-red-300 animate-pulse"></i>
-                                    <span class="font-bold text-lg">LIVE CLASS NOW</span>
-                                </div>
-                                <h3 class="text-2xl font-bold mb-1">${liveClass.topic}</h3>
-                                <p class="opacity-90">Instructor: ${liveClass.instructor}</p>
-                            </div>
-                            <a href="${liveClass.link}" target="_blank" class="bg-white text-red-600 px-6 py-3 rounded-xl font-bold hover:shadow-lg transition">
-                                <i class="fas fa-external-link-alt mr-2"></i>Join Class
-                            </a>
-                        </div>
-                    </div>
-                    ` : ''}
-                    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-                        <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-code mr-2"></i>Multi-Language Code Editor</h3>
-                        <div class="mb-3">
-                            <label class="block text-sm font-semibold text-gray-700 mb-2">Select Language</label>
-                            <select id="codeLanguage" onchange="switchLanguage()" class="px-4 py-2 rounded-lg border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                                <option value="html">HTML5</option>
-                                <option value="css">CSS3</option>
-                                <option value="javascript">JavaScript</option>
-                                <option value="python">Python</option>
-                                <option value="java">Java</option>
-                                <option value="csharp">C#</option>
-                                <option value="dotnet">.NET</option>
-                            </select>
-                        </div>
-                        <textarea id="codeEditor" class="w-full h-48 p-4 rounded-xl border-2 border-gray-200 font-mono text-sm focus:border-purple-500 focus:outline-none" placeholder="<!DOCTYPE html>
+                    <h3 class="text-2xl font-bold mb-1">${liveTopic}</h3>
+                    <p class="opacity-90">Instructor: ${liveInstructor}</p>
+                </div>
+                <a href="${liveLink}" target="_blank" class="bg-white text-red-600 px-6 py-3 rounded-xl font-bold hover:shadow-lg transition">
+                    <i class="fas fa-external-link-alt mr-2"></i>Join Class
+                </a>
+            </div>
+        </div>
+        ` : ''}
+
+        <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+            <h3 class="text-xl font-bold text-gray-800 mb-4"><i class="fas fa-code mr-2"></i>Multi-Language Code Editor</h3>
+            <div class="mb-3">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Select Language</label>
+                <select id="codeLanguage" onchange="switchLanguage()" class="px-4 py-2 rounded-lg border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
+                    <option value="html">HTML5</option>
+                    <option value="css">CSS3</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="csharp">C#</option>
+                    <option value="dotnet">.NET</option>
+                </select>
+            </div>
+            <textarea id="codeEditor" class="w-full h-48 p-4 rounded-xl border-2 border-gray-200 font-mono text-sm focus:border-purple-500 focus:outline-none" placeholder="<!DOCTYPE html>
 <html>
 <head>
   <title>My Page</title>
@@ -1714,74 +1345,80 @@
   <h1>Hello World</h1>
 </body>
 </html>"></textarea>
-                        <div class="flex gap-3 mt-3">
-                            <button onclick="runCode()" class="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg font-semibold transition">
-                                <i class="fas fa-play mr-2"></i>Run Code
-                            </button>
-                            <button onclick="clearCode()" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold transition">
-                                <i class="fas fa-trash mr-2"></i>Clear
-                            </button>
-                        </div>
-                        <div class="mt-4">
-                            <p class="text-sm font-semibold text-gray-700 mb-2">Output / Preview:</p>
-                            <div id="codeOutput" class="bg-gray-50 border-2 border-gray-200 rounded-xl p-4 min-h-[200px]">
-                                <iframe id="previewFrame" class="w-full h-48 bg-white rounded-lg" style="display:none;"></iframe>
-                                <pre id="textOutput" class="text-sm text-gray-800 whitespace-pre-wrap"></pre>
+            <div class="flex gap-3 mt-3">
+                <button onclick="runCode()" class="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg font-semibold transition">
+                    <i class="fas fa-play mr-2"></i>Run Code
+                </button>
+                <button onclick="clearCode()" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold transition">
+                    <i class="fas fa-trash mr-2"></i>Clear
+                </button>
+            </div>
+            <div class="mt-4">
+                <p class="text-sm font-semibold text-gray-700 mb-2">Output / Preview:</p>
+                <div id="codeOutput" class="bg-gray-50 border-2 border-gray-200 rounded-xl p-4 min-h-">
+                    <iframe id="previewFrame" class="w-full h-48 bg-white rounded-lg" style="display:none;"></iframe>
+                    <pre id="textOutput" class="text-sm text-gray-800 whitespace-pre-wrap"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            ${documents.length === 0 ? `
+                <div class="col-span-full bg-white rounded-2xl shadow-lg p-12 text-center">
+                    <i class="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
+                    <p class="text-gray-500 text-lg">No resources available yet</p>
+                    <p class="text-gray-400 text-sm mt-2">Check back later or ask your instructor</p>
+                </div>
+            ` : documents.map(doc => {
+                const course = COURSES.find(c => c.id === doc.course);
+                if (doc.type === 'video') {
+                    return `
+                        <div class="bg-white rounded-2xl shadow-lg p-6">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center text-white text-2xl">🎥</div>
+                                <div>
+                                    <h3 class="font-bold text-gray-800">${doc.name}</h3>
+                                    <p class="text-sm text-gray-600">${course?.name || 'General'}</p>
+                                </div>
                             </div>
+                            <div class="aspect-video rounded-xl overflow-hidden bg-gray-900">
+                                <iframe src="${doc.url}"
+                                        class="w-full h-full"
+                                        frameborder="0"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowfullscreen>
+                                </iframe>
+                            </div>
+                            <a href="${doc.url.replace('/embed/', '/watch?v=')}" target="_blank"
+                               class="mt-3 inline-block text-sm text-blue-600 hover:underline">
+                                <i class="fas fa-external-link-alt mr-1"></i>Open in YouTube
+                            </a>
                         </div>
-                    </div>
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        ${documents.map(doc => {
-                            const course = COURSES.find(c => c.id === doc.course);
-                            if (doc.type === 'video') {
-                                return `
-                                    <div class="bg-white rounded-2xl shadow-lg p-6">
-                                        <div class="flex items-center gap-3 mb-4">
-                                            <div class="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center text-white text-2xl">🎥</div>
-                                            <div>
-                                                <h3 class="font-bold text-gray-800">${doc.name}</h3>
-                                                <p class="text-sm text-gray-600">${course?.name || 'General'}</p>
-                                            </div>
-                                        </div>
-                                        <div class="aspect-video rounded-xl overflow-hidden bg-gray-900">
-                                            <iframe src="${doc.url}"
-                                                    class="w-full h-full"
-                                                    frameborder="0"
-                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                    allowfullscreen>
-                                            </iframe>
-                                        </div>
-                                        <a href="${doc.url.replace('/embed/', '/watch?v=')}" target="_blank"
-                                           class="mt-3 inline-block text-sm text-blue-600 hover:underline">
-                                            <i class="fas fa-external-link-alt mr-1"></i>Open in YouTube
-                                        </a>
-                                    </div>
-                                `;
-                            } else {
-                                return `
-                                    <div class="bg-white rounded-2xl shadow-lg p-6 card-hover">
-                                        <div class="flex items-center gap-3 mb-4">
-                                            <div class="w-12 h-12 ${course?.color || 'bg-gray-500'} rounded-xl flex items-center justify-center text-white text-2xl">
-                                                ${doc.type === 'pdf' ? '📄' : '📁'}
-                                            </div>
-                                            <div class="flex-1">
-                                                <h3 class="font-bold text-gray-800">${doc.name}</h3>
-                                                <p class="text-sm text-gray-600">${course?.name || 'General'}</p>
-                                            </div>
-                                        </div>
-                                        ${['doc', 'docx', 'pdf', 'xls', 'xlsx'].includes(doc.type) ? `
-                                            <button onclick="downloadDocument(${doc.id})" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-semibold transition">
-                                                <i class="fas fa-download mr-2"></i>Download
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                `;
-                            }
-                        }).join('')}
-                    </div>
-                `;
-                break;
-                
+                    `;
+                } else {
+                    return `
+                        <div class="bg-white rounded-2xl shadow-lg p-6 card-hover">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-12 h-12 ${course?.color || 'bg-gray-500'} rounded-xl flex items-center justify-center text-white text-2xl">
+                                    ${doc.type === 'pdf' ? '📄' : '📁'}
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="font-bold text-gray-800">${doc.name}</h3>
+                                    <p class="text-sm text-gray-600">${course?.name || 'General'}</p>
+                                </div>
+                            </div>
+                            ${['doc', 'docx', 'pdf', 'xls', 'xlsx'].includes(doc.type) ? `
+                                <button onclick="downloadDocument(${doc.id})" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-semibold transition">
+                                    <i class="fas fa-download mr-2"></i>Download
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+            }).join('')}
+        </div>
+    `;
+    break;
             case 'profile':
                 html = `
                     <h2 class="text-3xl font-bold text-gray-800 mb-6">My Profile</h2>
@@ -3683,145 +3320,8 @@ GOD'S GLORY NETWORK
     window.saveDocument = saveDocument;
     window.closeModal = closeModal;
 
-    function showLiveClassModal() {
-        const data = JSON.parse(localStorage.getItem('ggnet_data')) || {};
-        const activeClass = localStorage.getItem('ggnet_live_status') === 'live';
-        showModal(`
-            <div class="p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-2xl font-bold text-gray-800">Schedule Live Class</h3>
-                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <form onsubmit="saveLiveClass(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Class Topic</label>
-                        <input type="text" id="liveClassTopic" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Instructor's Name</label>
-                        <input type="text" id="liveClassInstructor" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Class Link (Zoom/Google Meet)</label>
-                        <input type="url" id="liveClassLink" required placeholder="https://meet.google.com/..." class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    ${activeClass ? `
-                    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="font-semibold text-green-800">Class is Live</p>
-                                <p class="text-sm text-green-600">Topic: ${data.liveClass.topic}</p>
-                            </div>
-                            <span class="flex h-3 w-3">
-                                <span class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-red-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                            </span>
-                        </div>
-                    </div>
-                    <button type="button" onclick="stopLiveClass()" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition mb-3">
-                        <i class="fas fa-stop-circle mr-2"></i>Stop Live Class
-                    </button>
-                    ` : ''}
-                    <button type="submit" class="w-full bg-gradient-to-r from-red-500 to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
-                        <i class="fas fa-broadcast-tower mr-2"></i>${activeClass ? 'Start New Class' : 'Go Live'}
-                    </button>
-                </div>
-            </div>
-        `);
-    }
+ 
 
-    function saveLiveClass(e) {
-        e.preventDefault();
-        const data = JSON.parse(localStorage.getItem('ggnet_data'));
-        data.liveClass = {
-            active: true,
-            startedAt: new Date().toISOString(),
-            topic: document.getElementById('liveClassTopic').value,
-            instructor: document.getElementById('liveClassInstructor').value,
-            link: document.getElementById('liveClassLink').value,
-            time: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        closeModal();
-        showToast('Live class scheduled!');
-        navigateTo('documents');
-    }
-
-    function showStudentUploadModal() {
-        showModal(`
-            <div class="p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-2xl font-bold text-gray-800">Upload Assignment</h3>
-                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <form onsubmit="saveStudentUpload(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">File Name</label>
-                        <input type="text" id="studentFileName" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Upload File</label>
-                        <input type="file" id="studentFileInput" required class="w-full px-4 py-3 rounded-xl border-2 border-gray-200">
-                    </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
-                        <i class="fas fa-upload mr-2"></i>Submit
-                    </button>
-                </div>
-            </div>
-        `);
-    }
-
-    function saveStudentUpload(e) {
-        e.preventDefault();
-        const data = JSON.parse(localStorage.getItem('ggnet_data'));
-        const fileInput = document.getElementById('studentFileInput');
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const uploadData = {
-                id: Date.now(),
-                name: document.getElementById('studentFileName').value,
-                student_id: currentUser.student_id,
-                student_name: currentUser.name,
-                data: event.target.result,
-                upload_date: new Date().toISOString().split('T')[0]
-            };
-            if (!data.studentUploads) data.studentUploads = [];
-            data.studentUploads.push(uploadData);
-            localStorage.setItem('ggnet_data', JSON.stringify(data));
-            closeModal();
-            showToast('Assignment uploaded successfully!');
-            navigateTo('resources');
-        };
-        reader.readAsDataURL(file);
-    }
-
-    function runCode() {
-        const code = document.getElementById('codeEditor').value;
-        const output = document.getElementById('codeOutput');
-        try {
-            // Basic JS execution in iframe sandbox
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            const result = iframe.contentWindow.eval(code);
-            output.textContent = result !== undefined ? String(result) : 'Code executed successfully';
-            document.body.removeChild(iframe);
-        } catch (err) {
-            output.textContent = 'Error: ' + err.message;
-        }
-    }
-
-
-    const codeTemplates = {
-        html: '<!DOCTYPE html>\n<html>\n<head>\n  <title>My Page</title>\n  <style>\n    body { font-family: Arial; padding: 20px; }\n  </style>\n</head>\n<body>\n  <h1>Hello World</h1>\n  <p>Start coding!</p>\n</body>\n</html>',
-        css: 'body {\n  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  color: white;\n  font-family: Arial, sans-serif;\n  padding: 40px;\n}\n\nh1 {\n  font-size: 3em;\n}',
-        javascript: 'console.log("Hello from JavaScript!");\n\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet("Student"));',
-        python: 'print("Hello from Python!")\n\ndef greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("Student"))',
-        java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java!");\n        System.out.println(greet("Student"));\n    }\n    \n    static String greet(String name) {\n        return "Hello, " + name + "!";\n    }\n}',
-        csharp: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C#!");\n        Console.WriteLine(Greet("Student"));\n    }\n    \n    static string Greet(string name) {\n        return $"Hello, {name}!";\n    }\n}',
-        dotnet: 'using System;\n\nnamespace MyApp {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from .NET!");\n        }\n    }\n}'
-    };
 
     function switchLanguage() {
         const lang = document.getElementById('codeLanguage').value;
@@ -3863,35 +3363,59 @@ GOD'S GLORY NETWORK
 
 
     window.stopLiveClass = function() {
-        const data = JSON.parse(localStorage.getItem('ggnet_data')) || {};
-        if (data.liveClass && data.liveClass.active) {
-            // Move current class to history
-            if (!data.liveClassHistory) data.liveClassHistory = [];
-            data.liveClassHistory.unshift({
-                ...data.liveClass,
-                endedAt: new Date().toISOString()
-            });
-            
-            // End current class
-            data.liveClass.active = false;
-            data.liveClass.endedAt = new Date().toISOString();
-            
-            localStorage.setItem('ggnet_data', JSON.stringify(data));
-            showToast('Live class ended successfully');
-            closeModal();
-            
-            // Force re-render all views
-            if (typeof loadDashboard === 'function') loadDashboard();
-            if (typeof renderSuperAdminDashboard === 'function') renderSuperAdminDashboard();
-            if (typeof renderStudentView === 'function') renderStudentView();
-            if (typeof renderStudentView === 'function') renderStudentView();
-            
-            // Trigger storage event for other tabs
-            window.dispatchEvent(new Event('storage'));
-        } else {
-            showToast('No active live class to stop');
-        }
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    
+    if (!data.liveClass || !data.liveClass.active) {
+        showToast('No active live class to stop');
+        return;
     }
+    
+    // Move current class to history
+    if (!data.liveClassHistory) data.liveClassHistory = [];
+    data.liveClassHistory.unshift({
+        ...data.liveClass,
+        endedAt: new Date().toISOString(),
+        endedBy: 'instructor_stop' // Mark it as normal stop
+    });
+    
+    // End current class
+    data.liveClass.active = false;
+    data.liveClass.endedAt = new Date().toISOString();
+    
+    // Update the simple flag for student sync
+    localStorage.setItem('ggnet_live_status', 'ended');
+    localStorage.setItem('ggnet_live_ended_at', Date.now());
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    showToast('Live class ended successfully');
+    closeModal();
+    
+    // Re-render current view instead of reload
+    navigateTo(currentView);
+}
+
+// Keep forceEndLiveClass as emergency reload
+window.forceEndLiveClass = function() {
+    localStorage.setItem('ggnet_live_status', 'ended');
+    localStorage.setItem('ggnet_live_ended_at', Date.now());
+    
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    if (data.liveClass) {
+        if (!data.liveClassHistory) data.liveClassHistory = [];
+        data.liveClassHistory.unshift({
+            ...data.liveClass,
+            endedAt: new Date().toISOString(),
+            endedBy: 'force_end' // Mark as force end
+        });
+        data.liveClass.active = false;
+        data.liveClass.endedAt = new Date().toISOString();
+    }
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    alert('Live class force-ended.');
+    location.reload(); // Only force end reloads
+}
+//     
 
 
     // Auto-sync live class status across tabs/dashboards
@@ -3905,64 +3429,45 @@ GOD'S GLORY NETWORK
     });
 
     // ===== BULLETPROOF LIVE CLASS SYSTEM =====
-    window.forceEndLiveClass = function() {
-        console.log('[FORCE END] Triggered');
-        localStorage.setItem('ggnet_live_status', 'ended');
-        localStorage.setItem('ggnet_live_ended_at', Date.now());
-        localStorage.setItem('ggnet_live_ended_by', 'force_button');
-        localStorage.setItem('ggnet_live_ended_reason', 'manual_force');
-        
-        // Clear old data structure too
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        if (data.liveClass) {
-            data.liveClass.active = false;
-            data.liveClass.endedAt = new Date().toISOString();
-        }
-        data.lastNotification = {
-            type: 'class_ended',
-            message: 'The instructor force-ended the live class',
-            timestamp: Date.now()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        alert('Live class force-ended. Page will reload.');
-        location.reload();
-    }
-    
+
+       
     // Override stopLiveClass to use force end logic
     window.stopLiveClass = window.forceEndLiveClass;
     
     // Update saveLiveClass to use simple flags
     function saveLiveClass(e) {
-        e.preventDefault();
-        const topic = document.getElementById('liveClassTopic').value;
-        const instructor = document.getElementById('liveClassInstructor').value;
-        const link = document.getElementById('liveClassLink').value;
-        const duration = parseInt(document.getElementById('liveClassDuration')?.value) || 60;
-        
-        localStorage.setItem('ggnet_live_status', 'live');
-        localStorage.setItem('ggnet_live_topic', topic);
-        localStorage.setItem('ggnet_live_instructor', instructor);
-        localStorage.setItem('ggnet_live_link', link);
-        localStorage.setItem('ggnet_live_started_at', Date.now());
-        localStorage.setItem('ggnet_live_ends_at', Date.now() + (duration * 60 * 1000));
-        
-        // Old structure for compatibility
-        const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
-        data.liveClass = {
-            active: true,
-            topic: topic,
-            instructor: instructor,
-            link: link,
-            duration: duration,
-            startedAt: new Date().toISOString()
-        };
-        localStorage.setItem('ggnet_data', JSON.stringify(data));
-        
-        closeModal();
-        alert('Live class started for ' + duration + ' minutes!');
-        location.reload();
+    e.preventDefault();
+    const topic = document.getElementById('liveClassTopic').value.trim();
+    const instructor = document.getElementById('liveClassInstructor').value.trim();
+    const link = document.getElementById('liveClassLink').value.trim();
+    const duration = parseInt(document.getElementById('liveClassDuration')?.value) || 60;
+    
+    if (!topic || !instructor || !link) {
+        alert('Please fill all fields');
+        return;
     }
+
+    // Single source of truth
+    localStorage.setItem('ggnet_live_status', 'live');
+    localStorage.setItem('ggnet_live_topic', topic);
+    localStorage.setItem('ggnet_live_instructor', instructor);
+    localStorage.setItem('ggnet_live_link', link);
+    localStorage.setItem('ggnet_live_started_at', Date.now());
+    localStorage.setItem('ggnet_live_ends_at', Date.now() + (duration * 60 * 1000));
+    
+    // Keep ggnet_data.liveClass for compatibility but sync it
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    data.liveClass = {
+        active: true,
+        topic, instructor, link, duration,
+        startedAt: new Date().toISOString()
+    };
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    closeModal();
+    showToast('Live class started! Students can now join.');
+    navigateTo(currentView); // Re-render, no reload
+}
     
     // Check live status on every render
     function getLiveClassStatus() {
@@ -4001,48 +3506,84 @@ GOD'S GLORY NETWORK
         }
 
         // Fixed sendNotification to handle missing event and actually broadcast
+        // function sendNotification(event) {
+        //     console.log('sendNotification called');
+        //     try {
+        //         if(event) { 
+        //             event.preventDefault(); 
+        //             event.stopPropagation(); 
+        //         }
+                
+        //         const title = document.getElementById('notifTitle').value.trim();
+        //         const message = document.getElementById('notifMessage').value.trim();
+                
+        //         if (!title || !message) {
+        //             alert('Please fill in both title and message');
+        //             return;
+        //         }
+                
+        //         // Create notification object
+        //         const notif = {
+        //             id: Date.now(),
+        //             title: title,
+        //             message: message,
+        //             timestamp: new Date().toISOString(),
+        //             read: false
+        //         };
+                
+        //         // Store in localStorage to simulate sending to all dashboards
+        //         let allNotifs = JSON.parse(localStorage.getItem('globalNotifications') || '[]');
+        //         allNotifs.unshift(notif);
+        //         localStorage.setItem('globalNotifications', JSON.stringify(allNotifs));
+                
+        //         // Dispatch custom event so other dashboard tabs can listen
+        //         window.dispatchEvent(new CustomEvent('newGlobalNotification', { detail: notif }));
+                
+        //         alert('Notification sent to all dashboards!');
+        //         document.getElementById('notifTitle').value = '';
+        //         document.getElementById('notifMessage').value = '';
+                
+        //     } catch(e) {
+        //         console.error('sendNotification error:', e);
+        //         alert('Error sending notification: ' + e.message);
+        //     }
+        // }
         function sendNotification(event) {
-            console.log('sendNotification called');
-            try {
-                if(event) { 
-                    event.preventDefault(); 
-                    event.stopPropagation(); 
-                }
-                
-                const title = document.getElementById('notifTitle').value.trim();
-                const message = document.getElementById('notifMessage').value.trim();
-                
-                if (!title || !message) {
-                    alert('Please fill in both title and message');
-                    return;
-                }
-                
-                // Create notification object
-                const notif = {
-                    id: Date.now(),
-                    title: title,
-                    message: message,
-                    timestamp: new Date().toISOString(),
-                    read: false
-                };
-                
-                // Store in localStorage to simulate sending to all dashboards
-                let allNotifs = JSON.parse(localStorage.getItem('globalNotifications') || '[]');
-                allNotifs.unshift(notif);
-                localStorage.setItem('globalNotifications', JSON.stringify(allNotifs));
-                
-                // Dispatch custom event so other dashboard tabs can listen
-                window.dispatchEvent(new CustomEvent('newGlobalNotification', { detail: notif }));
-                
-                alert('Notification sent to all dashboards!');
-                document.getElementById('notifTitle').value = '';
-                document.getElementById('notifMessage').value = '';
-                
-            } catch(e) {
-                console.error('sendNotification error:', e);
-                alert('Error sending notification: ' + e.message);
-            }
-        }
+    if(event) { 
+        event.preventDefault(); 
+        event.stopPropagation(); 
+    }
+    
+    const title = document.getElementById('notifTitle').value.trim();
+    const message = document.getElementById('notifMessage').value.trim();
+    
+    if (!title || !message) {
+        alert('Please fill in both Title and Message');
+        return false;
+    }
+    
+    const data = JSON.parse(localStorage.getItem('ggnet_data') || '{}');
+    if (!data.notifications) data.notifications = [];
+    
+    const newNotif = {
+        id: Date.now(),
+        title: title,
+        message: message,
+        timestamp: new Date().toISOString(),
+        sender: currentUser.full_name || 'Admin',
+        readBy: []
+    };
+    
+    data.notifications.unshift(newNotif);
+    localStorage.setItem('ggnet_data', JSON.stringify(data));
+    
+    document.getElementById('notifTitle').value = '';
+    document.getElementById('notifMessage').value = '';
+    
+    showToast('Notification sent to all users!', 'success');
+    loadNotifications(); // Update bell immediately
+    return false;
+}
 
 </script>
 
@@ -4070,5 +3611,6 @@ GOD'S GLORY NETWORK
             </div>
         </div>
     </footer>
+    <script src="student-submissions.js"></script>
 </body>
 </html>
